@@ -59,6 +59,9 @@ print(load_df_clean.dtypes) #no need to change types, they are already integers 
 print(temp_df.isna().sum()) #NaNs only in temperature colums h7 -> h24
 temp_df_clean = temp_df.copy()
 
+# --- Fill NaNs in load_df_clean using interpolation before/after ---
+#  Vertical interpolation across days for each hour h7..h24
+#    (fills gaps across days using surrounding days for each hour)
 cols_temp = [f"h{i}" for i in range(7, 25)]
 for col in cols_temp:
     temp_df_clean[col] = temp_df_clean[col].interpolate(method='linear', axis=0, limit_direction='both')    
