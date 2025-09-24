@@ -48,7 +48,7 @@ load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear', axis=1, l
 
 # 2) Vertical interpolation across days for each hour h1..h24
 #    (fills gaps across days using surrounding days for each hour)
-load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear',  axis=0, limit_direction='both')
+#load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear',  axis=0, limit_direction='both')
 
 # check if all NaNs in the load data frame have been filled
 print("\nRemaining NaNs per column after interpolation: ", load_df_clean[cols].isna().sum())
@@ -59,6 +59,9 @@ print(load_df_clean.dtypes) #no need to change types, they are already integers 
 print(temp_df.isna().sum()) #NaNs only in temperature colums h7 -> h24
 temp_df_clean = temp_df.copy()
 
+# --- Fill NaNs in load_df_clean using interpolation before/after ---
+#  Vertical interpolation across days for each hour h7..h24
+#    (fills gaps across days using surrounding days for each hour)
 cols_temp = [f"h{i}" for i in range(7, 25)]
 for col in cols_temp:
     temp_df_clean[col] = temp_df_clean[col].interpolate(method='linear', axis=0, limit_direction='both')    
@@ -116,4 +119,26 @@ print(temp_long.head())
 # Assuming zone_id and station_id correspond to the same geographical area
 merged_df = pd.merge(load_long, temp_long, left_on=['zone_id', 'date_time'], right_on=['station_id', 'date_time'], how='left')
 merged_df = merged_df.drop(columns=['station_id'])  # Drop redundant station_id column
-print(merged_df.head(24))
+print(merged_df.head())
+
+
+# Check for duplicates in the merged dataframe
+duplicates = merged_df.duplicated(subset=['zone_id', 'date_time'])
+print(f"Number of duplicate rows in merged_df: {duplicates.sum()}")
+# There should be no duplicates if zone_id and station_id correspond one-to-one
+
+# Ensure a continuous hourly time series for each zone_id
+def _reindex_hourly(group):
+    idx = pd.date_range(start=group['date_time'].min(), end=group['date_time'].max(), freq='h')
+    g = (group.set_index('date_time').reindex(idx))
+    g.index.name = 'date_time'
+    g['zone_id'] = group['zone_id'].iloc[0]
+
+    return g.reset_index()
+
+#merged_hourly = (merged_df.groupby('zone_id', group_keys=False).apply(lambda g: _reindex_hourly(g.reset_index(drop=True).assign(zone_id=g.name))))
+
+merged_hourly = (merged_df.groupby('zone_id', group_keys=False, include_groups=False)
+                 .apply(_reindex_hourly))
+                 
+
