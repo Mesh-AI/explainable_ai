@@ -48,7 +48,7 @@ load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear', axis=1, l
 
 # 2) Vertical interpolation across days for each hour h1..h24
 #    (fills gaps across days using surrounding days for each hour)
-load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear',  axis=0, limit_direction='both')
+#load_df_clean[cols] = load_df_clean[cols].interpolate(method='linear',  axis=0, limit_direction='both')
 
 # check if all NaNs in the load data frame have been filled
 print("\nRemaining NaNs per column after interpolation: ", load_df_clean[cols].isna().sum())
@@ -119,4 +119,41 @@ print(temp_long.head())
 # Assuming zone_id and station_id correspond to the same geographical area
 merged_df = pd.merge(load_long, temp_long, left_on=['zone_id', 'date_time'], right_on=['station_id', 'date_time'], how='left')
 merged_df = merged_df.drop(columns=['station_id'])  # Drop redundant station_id column
-print(merged_df.head(24))
+print(merged_df.head())
+
+
+# Check for duplicates in the merged dataframe
+duplicates = merged_df.duplicated(subset=['zone_id', 'date_time'])
+print(f"Number of duplicate rows in merged_df: {duplicates.sum()}")
+# There should be no duplicates if zone_id and station_id correspond one-to-one
+
+# Ensure a continuous hourly time series for each zone_id
+# Ensure a continuous hourly time series for each zone_id
+
+def _reindex_hourly(g: pd.DataFrame, key) -> pd.DataFrame:
+    # make sure date_time is datetime
+    g = g.copy()
+    g['date_time'] = pd.to_datetime(g['date_time'])
+
+    # continuous hourly index (use lowercase 'h' to avoid the FutureWarning)
+    idx = pd.date_range(g['date_time'].min(), g['date_time'].max(), freq='h')
+
+    out = (
+        g.set_index('date_time')
+         .reindex(idx)
+         .rename_axis('date_time')
+         .ffill()                      # choose your fill strategy as needed
+         .reset_index()
+    )
+    out['zone_id'] = key
+    # optional tidy column order
+    return out[['zone_id', 'date_time'] + [c for c in out.columns if c not in ('zone_id', 'date_time')]]
+
+# Build the result by iterating groups so we have the key
+merged_hourly = pd.concat(
+    (_reindex_hourly(g.drop(columns=['zone_id'], errors='ignore'), key)
+     for key, g in merged_df.groupby('zone_id', sort=False)),
+    ignore_index=True
+)
+print(merged_hourly.head())
+                 
