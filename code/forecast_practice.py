@@ -128,25 +128,25 @@ print(f"Number of duplicate rows in merged_df: {duplicates.sum()}")
 # There should be no duplicates if zone_id and station_id correspond one-to-one
 
 # Ensure a continuous hourly time series for each zone_id
-# Ensure a continuous hourly time series for each zone_id
+
 
 def _reindex_hourly(g: pd.DataFrame, key) -> pd.DataFrame:
     # make sure date_time is datetime
     g = g.copy()
     g['date_time'] = pd.to_datetime(g['date_time'])
 
-    # continuous hourly index (use lowercase 'h' to avoid the FutureWarning)
+    # continuous hourly index 
     idx = pd.date_range(g['date_time'].min(), g['date_time'].max(), freq='h')
 
     out = (
         g.set_index('date_time')
          .reindex(idx)
          .rename_axis('date_time')
-         .ffill()                      # choose your fill strategy as needed
+         .ffill()                      # choose the fill strategy as needed
          .reset_index()
     )
     out['zone_id'] = key
-    # optional tidy column order
+    # tidy column order
     return out[['zone_id', 'date_time'] + [c for c in out.columns if c not in ('zone_id', 'date_time')]]
 
 # Build the result by iterating groups so we have the key
@@ -155,5 +155,5 @@ merged_hourly = pd.concat(
      for key, g in merged_df.groupby('zone_id', sort=False)),
     ignore_index=True
 )
-print(merged_hourly.head())
+print(merged_hourly.head()) 
                  
