@@ -12,6 +12,8 @@ from math import pi
 from typing import Iterable, Dict, Tuple, List
 import statsmodels.api as sm
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from xgboost import XGBRegressor
+import shap
 
 
 #load the data
@@ -665,3 +667,98 @@ models_by_zone, metrics_table = run_sarimax_per_zone(
 
 print("\n=== Metrics (head) ===")
 print(metrics_table.head(10))
+
+
+
+
+# ---- Train/validate/test a GLOBAL XGBoost on all zones
+
+
+# ---------- CONFIG ----------
+DATE_COL  = "date_time"
+ZONE_COL  = "zone_id"
+TARGET    = "load"
+
+TRAIN_END = "2006-12-31 23:00"
+VALID_END = "2007-12-31 23:00"
+
+def rmse(y_true: pd.Series, y_pred: pd.Series) -> float:
+    y_true, y_pred = y_true.align(y_pred, join="inner")
+    return float(np.sqrt(mean_squared_error(y_true, y_pred)))
+
+def smape(y_true: pd.Series, y_pred: pd.Series) -> float:
+    y_true, y_pred = y_true.align(y_pred, join="inner")
+    denom = np.clip(np.abs(y_true.values)+np.abs(y_pred.values), 1e-9, None)
+    return float(np.mean(2*np.abs(y_pred.values-y_true.values)/denom)*100.0)
+
+def pick_x_features(df: pd.DataFrame) -> List[str]:
+    """Use the same idea as SARIMAX: keep exogenous + engineered lags/rolls/leads."""
+    drop = {ZONE_COL, DATE_COL, TARGET}
+    keep_exact = {
+        "temp_mean","HDD","CDD",
+        "is_holiday","is_day_before_holiday","is_day_after_holiday",
+        "sunrise_hour_approx","sunset_hour_approx",
+        "daylight_hours_approx","is_daylight_approx","daylight_proxy",
+        "hour","dow","is_weekend","hour_sin","hour_cos","dow_sin","dow_cos","doy_sin","doy_cos",
+    }
+    cols: List[str] = []
+    for c in df.columns:
+        if c in drop: 
+            continue
+        if c in keep_exact or c.startswith("station_") or any(tok in c for tok in ("_lag","_roll","_lead")):
+            cols.append(c)
+    return list(dict.fromkeys(cols))  # de-dup, keep order
+
+# Ensure sorted
+features_with_lags = features_with_lags.sort_values([ZONE_COL, DATE_COL]).reset_index(drop=True)
+
+# Build design matrix
+X_cols = pick_x_features(features_with_lags)
+df_all = features_with_lags.copy()
+df_all[DATE_COL] = pd.to_datetime(df_all[DATE_COL], errors="coerce")
+
+# Clean: drop rows with any NA in target or features
+mask = df_all[TARGET].notna() & df_all[X_cols].notna().all(axis=1)
+df_all = df_all.loc[mask, [DATE_COL, ZONE_COL, TARGET] + X_cols].copy()
+
+# Chronological split across ALL zones (global model)
+train_mask = df_all[DATE_COL] <= pd.Timestamp(TRAIN_END)
+valid_mask = (df_all[DATE_COL] > pd.Timestamp(TRAIN_END)) & (df_all[DATE_COL] <= pd.Timestamp(VALID_END))
+test_mask  = df_all[DATE_COL] > pd.Timestamp(VALID_END)
+
+X_train, y_train = df_all.loc[train_mask, X_cols], df_all.loc[train_mask, TARGET]
+X_valid, y_valid = df_all.loc[valid_mask, X_cols], df_all.loc[valid_mask, TARGET]
+X_test,  y_test  = df_all.loc[test_mask,  X_cols], df_all.loc[test_mask,  TARGET]
+
+print(f"Train: {len(y_train):,}  Valid: {len(y_valid):,}  Test: {len(y_test):,}")
+
+# XGBoost params (good starting point; tune later)
+xgb = XGBRegressor(
+    n_estimators=2000,
+    learning_rate=0.03,
+    max_depth=8,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    reg_alpha=0.0,
+    reg_lambda=2.0,
+    tree_method="hist",         # fast + robust
+    random_state=42,
+)
+
+# Early stopping on VALID
+xgb.fit(
+    X_train, y_train,
+    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    eval_metric="rmse",
+    verbose=False,
+    early_stopping_rounds=100
+)
+
+# Evaluate
+pred_va = xgb.predict(X_valid)
+pred_te = xgb.predict(X_test)
+
+print("VALID  MAE={:.2f}  RMSE={:.2f}  sMAPE={:.2f}%".format(
+    mean_absolute_error(y_valid, pred_va), rmse(y_valid, pred_va), smape(y_valid, pred_va)))
+print("TEST   MAE={:.2f}  RMSE={:.2f}  sMAPE={:.2f}%".format(
+    mean_absolute_error(y_test, pred_te),  rmse(y_test, pred_te),  smape(y_test, pred_te)))
