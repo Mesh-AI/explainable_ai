@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Dict, List, Iterable
+from typing import Dict, List, Iterable, Union
 from math import pi
 from matplotlib import dates
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import re
@@ -27,22 +28,29 @@ def _normalize_holiday_matrix(df: pd.DataFrame) -> pd.DataFrame:
     Handles cases where the holiday name is in the index or in the first column,
     and drops any non-year columns like 'Unnamed: 0' before parsing.
     """
-    # If holiday names are the index, promote to a column named 'holiday'
     if df.index.name is None or df.index.equals(pd.RangeIndex(len(df))):
-        # Try to detect when the first column is the holiday name
         first_col = df.columns[0]
-        # If the first column looks like year (numeric), then names must be in the index -> add from index
-        if pd.to_numeric(
-            pd.Index(df.columns), errors="coerce"
-        ).notna().sum() > 0 and not pd.api.types.is_object_dtype(df[first_col]):
+
+        # Explicit year detection - better for C++/Python interop
+        year_count = 0
+        for col_name in df.columns:
+            try:
+                year_val = float(str(col_name))  # Ensure string conversion
+                if 1900 <= year_val <= 2100:
+                    year_count += 1
+            except (ValueError, TypeError):
+                continue
+
+        if year_count > 0 and not pd.api.types.is_object_dtype(df[first_col]):
             df2 = df.rename_axis("holiday").reset_index()
         else:
-            # Assume first column holds holiday names
             df2 = df.copy()
             if first_col.lower() != "holiday":
                 df2 = df2.rename(columns={first_col: "holiday"})
     else:
         df2 = df.rename_axis("holiday").reset_index()
+
+    return df2
 
     # Melt to long format
     long = df2.melt(id_vars=["holiday"], var_name="year", value_name="raw")
@@ -74,7 +82,7 @@ def _normalize_holiday_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 def make_features(
     df: pd.DataFrame,
-    holidays,  # can be a path or a wide-format DataFrame
+    holidays: Union[str, os.PathLike[str], pd.DataFrame],
     *,
     date_col: str = "date_time",
     temp_prefix: str = "temp_station_",
