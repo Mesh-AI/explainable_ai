@@ -22,7 +22,6 @@ def build_merged(load_long: pd.DataFrame, temp_wide: pd.DataFrame) -> pd.DataFra
     return merged_all_cleaned
 
 
-# --- Robust: convert wide holiday matrix (rows=holiday names, cols=years) into tidy 'date' list
 def _normalize_holiday_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """
     Handles cases where the holiday name is in the index or in the first column,
@@ -32,9 +31,9 @@ def _normalize_holiday_matrix(df: pd.DataFrame) -> pd.DataFrame:
     if df.index.name is None or df.index.equals(pd.RangeIndex(len(df))):
         # Try to detect when the first column is the holiday name
         first_col = df.columns[0]
-        # Check if most columns looks like years (numeric)
+        # If the first column looks like year (numeric), then names must be in the index -> add from index
         if pd.to_numeric(
-            df.columns, errors="coerce"
+            pd.Index(df.columns), errors="coerce"
         ).notna().sum() > 0 and not pd.api.types.is_object_dtype(df[first_col]):
             df2 = df.rename_axis("holiday").reset_index()
         else:
@@ -168,10 +167,6 @@ def make_features(
         out["CDD"] = (out["temp_mean"] - base_c).clip(lower=0)
 
     return out
-
-
-features_df = make_features(merged_all_cleaned, holidays, temp_prefix="station_")
-print(features_df.head())
 
 
 def add_exogenous_lags_for_features_df(
