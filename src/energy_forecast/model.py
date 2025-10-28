@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
-from .feature_building import ensure_calendar_features  # you already have this
+from .feature_building import ensure_calendar_features
 
 ARTIFACTS = Path("artifacts")
 MODEL_PATH = ARTIFACTS / "xgb_zone1.json"
@@ -40,9 +40,9 @@ def _row_to_frame(row: Dict[str, Any]) -> pd.DataFrame:
     need = {"hour_sin", "hour_cos", "dow_sin", "dow_cos", "doy_sin", "doy_cos"}
     if "date_time" in df.columns and not need.issubset(df.columns):
         df["date_time"] = pd.to_datetime(df["date_time"], errors="coerce")
-        cyc = ensure_calendar_features(df["date_time"], True, True, True)
-        for k, v in cyc.items():
-            df[k] = v
+        cyc = ensure_calendar_features(df, df.index)
+    # for k, v in cyc.items():
+    #     df[k] = v
     for c in df.columns:
         if c != "date_time":
             df[c] = pd.to_numeric(df[c], errors="ignore")

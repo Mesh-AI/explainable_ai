@@ -518,10 +518,10 @@ if len(y_clean) > H + 1:
     mse_te = mean_squared_error(y_test, y_pred)
     rmse_te = np.sqrt(mse_te)
     mae_te = mean_absolute_error(y_test, y_pred)
-    smape = 100 * np.mean(2 * np.abs(y_pred - y_test) / (np.abs(y_test) + np.abs(y_pred) + 1e-9))
+    smape_te = 100 * np.mean(2 * np.abs(y_pred - y_test) / (np.abs(y_test) + np.abs(y_pred) + 1e-9))
 
     print(
-        f"Holdout ({H}h): MSE={mse_te:.2f}  RMSE={rmse_te:.2f}  MAE={mae_te:.2f}  sMAPE={smape:.2f}%"
+        f"Holdout ({H}h): MSE={mse_te:.2f}  RMSE={rmse_te:.2f}  MAE={mae_te:.2f}  sMAPE={smape_te:.2f}%"
     )
 else:
     print("\n[Skip holdout metrics] Not enough data for a 7-day test split.")
@@ -608,9 +608,15 @@ def pick_xgb_feature_cols(df: pd.DataFrame) -> list[str]:
 
 
 def smape(y_true: pd.Series, y_pred: np.ndarray) -> float:
-    y_true, y_pred = y_true.align(pd.Series(y_pred, index=y_true.index), join="inner")
-    denom = np.abs(y_true.values) + np.abs(y_pred.values) + 1e-9
-    return float(100.0 * np.mean(2.0 * np.abs(y_pred.values - y_true.values) / denom))
+    # align to ensure same index/length
+    y_true_aligned, y_pred_series = y_true.align(
+        pd.Series(np.asarray(y_pred), index=y_true.index), join="inner"
+    )
+    yt = y_true_aligned.to_numpy()
+    yp = y_pred_series.to_numpy()
+
+    denom = np.abs(yt) + np.abs(yp) + 1e-9
+    return float(100.0 * np.mean(2.0 * np.abs(yp - yt) / denom))
 
 
 # 1) Slice zone & enforce hourly
@@ -766,7 +772,7 @@ def _pair(f: str, X_shap: Any) -> str:
 
 for f in feat_list[:10]:  # keep it concise
     try:
-        shap.dependence_plot(f, shap_values, X_shap, interaction_index=_pair(f), show=True)
+        shap.dependence_plot(f, shap_values, X_shap, interaction_index=_pair(f, X_shap), show=True)
     except Exception as e:
         print(f"[warn] dependence plot for {f} skipped: {e}")
 
