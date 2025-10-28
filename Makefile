@@ -1,22 +1,28 @@
-.PHONY: install run test typecheck lint format train
+.PHONY: install run test typecheck lint format train sync
+
+create-venv:
+	uv venv
 
 install:
-	pip install -r requirements.txt
+	uv pip install .
+
+sync:
+	uv sync
 
 run:
-	uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2
+	PYTHONPATH=src uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2
 
 test:
-	pytest -q
+	uv run pytest -q
 
 typecheck:
-	mypy src
+	uv run mypy src
 
 lint:
-	flake8 src tests
+	uv run ruff check --fix src tests
 
 format:
-	black src tests app.py
+	uv run ruff format src tests
 
 train:
-	python -m energy_forecast.train_xgb
+	uv run python -m energy_forecast.train_xgb

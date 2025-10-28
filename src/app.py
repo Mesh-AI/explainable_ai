@@ -1,7 +1,9 @@
 # app.py
+from typing import Any, Dict
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+
 from energy_forecast import predict as core_predict
 
 app = FastAPI(title="Energy Forecast API", version="0.1.0")
