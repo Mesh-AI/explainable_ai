@@ -31,7 +31,8 @@ def main(base_dir: Path = Path("."), zone_id: int = 1) -> None:
     df = df.sort_values("date_time", ascending=True)
 
     # 4) Minimal features (you can add your lags/HDD/CDD here later)
-    feats = make_features(df)
+    holidays_path = base_dir / "data" / "Load" / "Holiday_List.csv"
+    feats = make_features(df, holidays=holidays_path, temp_prefix="station_")
 
     # 5) Target/Features
     y = feats["load"]

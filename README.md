@@ -5,8 +5,8 @@ Implement Explainable AI in Timeseries Forecast
 ## Task 1 — Local production-like setup
 
 ### Setup
-workon explainable_ai
-pip install -r requirements.txt
+source .venv/bin/activate 
+uv sync --all-packages
 
 ### Quality gates
 make test
