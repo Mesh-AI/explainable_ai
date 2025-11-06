@@ -15,10 +15,23 @@ dist/
 .ruff_cache/
 .vscode/
 
+# Logs
+*.log
+logs/
+nohup.out
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+
 # Large or local-only stuff
 data/
 artefacts/
 #artifacts/*      # comment out if I want artifacts baked into the image
+
+# Docker-specific
+Dockerfile
+docker-compose.yml
 
 # Git
 .git
