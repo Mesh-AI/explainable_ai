@@ -1,0 +1,25 @@
+# Python/build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments & lock caches
+.venv/
+.uv/
+
+# Tool caches / IDE
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.vscode/
+
+# Large or local-only stuff
+data/
+artefacts/
+#artifacts/*      # comment out if I want artifacts baked into the image
+
+# Git
+.git
+.gitignore
