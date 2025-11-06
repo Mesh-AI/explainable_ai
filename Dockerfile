@@ -1,28 +1,29 @@
-# ----- Builder stage: create a small virtual environment with only the needed dependencies -----
+# ===== Builder stage: create a small virtual environment with only the needed dependencies =====
 FROM python:3.11-slim AS builder
 
 # Build tools only in builder stage (never ship them)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
-    python3-pip \
+    # python3-pip \
     python3-venv \
+    curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Isolated virtual environment so I can copy it into the final image
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH" \
-    PIP_NO_CACHE_DIR=1 
-
-# Install uv 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
+# Install uv and put it on the PATH (must be before venv creation)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh 
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Created a dedicated virtualenv for the final image
-RUN uv venv /opt/venv.                      # Runs the uv command to create a virtual environment at the directory /opt/venv inside the Docker image
-ENV VIRTUAL_ENV=/opt/venv                   # Sets the VIRTUAL_ENV environment variable to point to the active virtual environment directory located at /opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"            # Updates the PATH environment variable to include the bin directory of the virtual environment, ensuring that executables installed in the virtual environment are prioritized when running commands.
-ENV PIP_NO_CACHE_DIR=1                      # Disables pip's cache to reduce image size
+
+# Created a dedicated virtualenv for the final image with uv
+RUN uv venv /opt/venv   
+# Sets the VIRTUAL_ENV environment variable to point to the active virtual environment directory located at /opt/venv
+ENV VIRTUAL_ENV=/opt/venv                   
+# Updates the PATH environment variable to include the bin directory of the virtual environment, ensuring that executables installed in the virtual environment 
+#are prioritized when running commands.
+ENV PATH="/opt/venv/bin:${PATH}"  
+# Disables pip's cache to reduce image size
+ENV PIP_NO_CACHE_DIR=1                      
 
 WORKDIR /app
 
@@ -36,7 +37,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --python /opt/venv/bin/python
 
 
-#Runtime stage: copy the virtual environment from the builder stage and add the project files
+# ===== Runtime stage: copy the virtual environment from the builder stage and add the project files =====
 FROM python:3.11-slim 
 
 # Runtime libs only (xgboost needs libgomp), curl for healthchecks
@@ -48,8 +49,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Bring in the ready-to-use virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
-ENV PYTHONUNBUFFERED=1 # Prevent Python from buffering stdout/stderr (good for logging)
-ENV PYTHONDONTWRITEBYTECODE=1 # Prevent Python from writing .pyc files (not needed in containers)
+
+# Prevent Python from buffering stdout/stderr (good for logging)
+ENV PYTHONUNBUFFERED=1  
+
+# Prevent Python from writing .pyc files (not needed in containers)
+ENV PYTHONDONTWRITEBYTECODE=1           
 ENV PYTHONPATH=/app/src
 
 WORKDIR /app    
@@ -57,12 +62,14 @@ WORKDIR /app
 # Copy the application code last (best cache behaviour)
 COPY . .
 
-# Install the project into the virtual environment (deps already present)
-# Using pip as this uses the already-copied venv
-RUN /opt/venv/bin/pip install --no-deps -e.
+# Ensure pip exists inside the copied venv, then install the project itself
+# (deps already present; I avoid re-resolving with --no-deps)
+RUN /opt/venv/bin/python -m ensurepip --upgrade && \
+    /opt/venv/bin/python -m pip install --no-cache-dir uvicorn && \
+    /opt/venv/bin/python -m pip install --no-deps -e .
 
 # Non-root user (better security practice)
-RUN useradd -u 10001 -m appuser && chow -R appuser /app
+RUN useradd -u 10001 -m appuser && chown -R appuser /app
 USER appuser
 
 EXPOSE 8000
