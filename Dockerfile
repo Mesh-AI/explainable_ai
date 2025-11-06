@@ -33,8 +33,7 @@ COPY pyproject.toml uv.lock ./
 # Install *only dependencies* into /opt/venv (not the project yet)
 # --frozen: respect uv.lock exactly
 # --no-dev: omit dev deps in the container
-# --no-install-project: install deps only (faster layer caching)
-RUN uv sync --frozen --no-dev --no-install-project --python /opt/venv/bin/python
+RUN uv sync --frozen --no-dev --python /opt/venv/bin/python
 
 
 # ===== Runtime stage: copy the virtual environment from the builder stage and add the project files =====
@@ -62,10 +61,11 @@ WORKDIR /app
 # Copy the application code last (best cache behaviour)
 COPY . .
 
-# Ensure pip exists inside the copied venv, then install the project itself
-# (deps already present; I avoid re-resolving with --no-deps)
-RUN /opt/venv/bin/python -m ensurepip --upgrade && \
-    /opt/venv/bin/python -m pip install --no-cache-dir uvicorn && \
+# Ensure pip exists, upgrade tools, install FastAPI runtime deps + my app
+# Ensure pip exists and install missing runtime dependencies + your app
+RUN /opt/venv/bin/python -m ensurepip --upgrade --default-pip && \
+    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
+    /opt/venv/bin/python -m pip install --no-cache-dir fastapi uvicorn pydantic numpy pandas scikit-learn xgboost && \
     /opt/venv/bin/python -m pip install --no-deps -e .
 
 # Non-root user (better security practice)
@@ -78,5 +78,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
     CMD curl -fsS http://127.0.0.1:8000/health || exit 1
 
-#Start the FastAPI (for dev we can use --reload outside the container)
-CMD ["uvicorn","app:app","--host","0.0.0.0","--port","8000","--workers","2"]   
+#Run uvicorn, pointing to the module name "app" in src/ , with a single worker
+CMD ["/opt/venv/bin/uvicorn","app:app","--host","0.0.0.0","--port","8000","--workers","1"] 
